@@ -79,6 +79,18 @@ allow_title=elden ring
 deny_class=firefox
 ```
 
+To inspect the currently focused window and collect matching values for filter rules:
+
+```bash
+sleep 3 && hyprctl -j activewindow
+```
+
+Then use the reported `pid` to inspect the executable path:
+
+```bash
+readlink /proc/<PID>/exe
+```
+
 ## OpenRC Service
 
 An example OpenRC service script is included as `openrc/dmemcg-booster`.
