@@ -2,7 +2,7 @@ Source: nitrux-dmemcg-booster
 Section: misc
 Priority: important
 Maintainer: Uri Herrera <uri_herrera@nxos.org>
-Build-Depends: debhelper-compat (= 13), cargo, rustc
+Build-Depends: debhelper-compat (= 13), cargo, rustc, pkg-config, libdbus-1-dev
 Standards-Version: 4.6.2
 Homepage: http://nxos.org
 

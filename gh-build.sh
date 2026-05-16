@@ -14,4 +14,9 @@ debuild -b -uc -us
 
 ### Collect artifacts where workflow expects them
 mkdir -p output
-mv ../*.deb output/
+if ls ../*.deb >/dev/null 2>&1; then
+	mv ../*.deb output/
+else
+	echo "No .deb artifacts were produced by debuild" >&2
+	exit 1
+fi
