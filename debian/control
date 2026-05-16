@@ -9,6 +9,6 @@ Homepage: http://nxos.org
 
 Package: nitrux-dmemcg-booster
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, openrc
+Depends: ${shlibs:Depends}, ${misc:Depends}, openrc, dbus
 Conflicts: systemd, systemd-sysv
 Description: Fork of Valve's dmemcg-booster daemon, adapted to target OpenRC environments.
