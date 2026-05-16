@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --locked
+
+override_dh_auto_install:
+	install -D -m 0755 target/release/dmemcg-booster \
+		$(CURDIR)/debian/nitrux-dmemcg-booster/usr/bin/dmemcg-booster

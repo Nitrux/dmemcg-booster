@@ -16,7 +16,7 @@ Run as root (typically via OpenRC):
 ```bash
 dmemcg-booster --mode daemon --poll-only \
   --socket-path /run/dmemcg-booster/focus.sock \
-  --socket-owner-uid 1000 \
+  --socket-owner-uid 1001 \
   --socket-mode-octal 0600
 ```
 
@@ -82,9 +82,10 @@ Typical installation:
 
 ```bash
 install -m 0755 dmemcg-booster.openrc /etc/init.d/dmemcg-booster
+install -m 0644 dmemcg-booster.conf /etc/conf.d/dmemcg-booster
 mkdir -p /etc/dmemcg-booster
 # place your games.conf at /etc/dmemcg-booster/games.conf
-# set DMEMCG_AGENT_UID to your desktop user's uid in /etc/init.d/dmemcg-booster
+# set DMEMCG_AGENT_UID to your desktop user's uid in /etc/conf.d/dmemcg-booster
 rc-update add dmemcg-booster default
 rc-service dmemcg-booster start
 ```
@@ -105,7 +106,7 @@ If you find problems with the contents of this repository, please create an issu
 
 ## Submitting a bug report
 
-Before submitting a bug, you should look at the [existing bug reports](https://gitlab.steamos.cloud/holo/dmemcg-booster/-/issues) to verify that no one has reported the bug already.
+Before submitting a bug, you should look at the [existing bug reports](https://github.com/Nitrux/dmemcg-booster/issues) to verify that no one has reported the bug already.
 
 ©2026 Valve Corporation
 ©2026 Nitrux Latinoamericana S.C.

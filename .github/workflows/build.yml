@@ -1,0 +1,30 @@
+name: Build and push packages to PackageCloud.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-24.04
+
+    container:
+      image: debian:stable
+      env:
+        DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update APT sources and upgrade
+        run: apt update && apt full-upgrade -y
+
+      - name: Install PackageCloud client
+        run: apt -q update && apt -yy install ruby-full ca-certificates build-essential && gem install --no-document package_cloud
+
+      - name: Build package set
+        run: bash ./gh-build.sh
+
+      - name: Push packages
+        env:
+          PACKAGECLOUD_TOKEN: ${{ secrets.PACKAGECLOUD_TOKEN }}
+        run: package_cloud push nitrux/testing/debian/duke output/*.deb

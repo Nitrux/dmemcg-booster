@@ -1,0 +1,15 @@
+# Compiled source #
+###################
+*.directory
+*.bak
+/.project
+*.db
+*.qmlc
+/target/
+/output/
+/*.deb
+/*.build
+/*.buildinfo
+/*.changes
+/*.dsc
+/*.tar.*

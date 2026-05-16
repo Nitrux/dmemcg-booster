@@ -1,16 +1,11 @@
 #!/sbin/openrc-run
 
-name="dmemcg-booster"
-description="Device-memory cgroup booster daemon"
+description="Starts the dmemcg-booster daemon"
 command="/usr/bin/dmemcg-booster"
-# Set this to the desktop user's numeric uid, e.g. 1000.
-: "${DMEMCG_AGENT_UID:=1000}"
+supervisor=supervise-daemon
+# Set in /etc/conf.d/dmemcg-booster. Fallback defaults to 1001.
+: "${DMEMCG_AGENT_UID:=1001}"
 command_args="--mode daemon --poll-only --poll-interval-ms 1000 --socket-path /run/dmemcg-booster/focus.sock --socket-owner-uid ${DMEMCG_AGENT_UID} --socket-mode-octal 0600 --dedicated-cgroup dmemcg-booster.focused --filter-config /etc/dmemcg-booster/games.conf"
-command_background="yes"
-pidfile="/run/${RC_SVCNAME}.pid"
-
-output_log="/var/log/${RC_SVCNAME}.log"
-error_log="/var/log/${RC_SVCNAME}.err"
 
 depend() {
     need localmount

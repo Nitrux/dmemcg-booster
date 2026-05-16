@@ -1,0 +1,14 @@
+Source: nitrux-dmemcg-booster
+Section: misc
+Priority: important
+Maintainer: Uri Herrera <uri_herrera@nxos.org>
+Build-Depends: debhelper-compat (= 13), cargo, rustc
+Standards-Version: 4.6.2
+Homepage: http://nxos.org
+
+
+Package: nitrux-dmemcg-booster
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, openrc
+Conflicts: systemd, systemd-sysv
+Description: Fork of Valve's dmemcg-booster daemon, adapted to target OpenRC environments.
