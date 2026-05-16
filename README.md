@@ -2,110 +2,14 @@
 
 Fork of Valve's [dmemcg-booster daemon](https://gitlab.steamos.cloud/holo/dmemcg-booster), adapted to target OpenRC environments.
 
+For more in-depth information about dmemcg-booster, please see the [Wiki](https://github.com/Nitrux/dmemcg-booster/wiki).
+
 ## OpenRC Split Architecture
 
 This fork supports split roles to work on OpenRC systems:
 
 - `daemon` mode: privileged process that manages cgroups and limits.
 - `agent` mode: user-session process that tracks focused windows (Hyprland) and reports focus to the daemon.
-
-### Daemon mode (root)
-
-Run as root (typically via OpenRC):
-
-```bash
-dmemcg-booster --mode daemon --poll-only \
-  --socket-path /run/dmemcg-booster/focus.sock \
-  --socket-owner-uid 1001 \
-  --socket-mode-octal 0600
-```
-
-### Agent mode (user session)
-
-Run as the desktop user inside your graphical session:
-
-```bash
-dmemcg-booster --mode agent --focus-provider=hyprland --socket-path /run/dmemcg-booster/focus.sock
-```
-
-The agent resends the current focus sample on a heartbeat, even if focus metadata did not change, so late-spawned child processes can still be migrated.
-
-## Filter Layer (game targeting)
-
-The daemon will not boost every focused app by default unless you explicitly allow that.
-
-- Safe default: if no allow rules are configured, nothing is boosted.
-- Matching is case-insensitive substring-based.
-
-### CLI filter rules
-
-- `--allow-class <text>`
-- `--allow-exe <text>`
-- `--allow-title <text>`
-- `--allow-app <text>`
-- `--deny-class <text>`
-- `--deny-exe <text>`
-- `--deny-title <text>`
-- `--deny-app <text>`
-- `--allow-all-focused` (opt-in fallback behavior)
-
-Example:
-
-```bash
-dmemcg-booster --mode daemon --poll-only \
-  --allow-exe steam \
-  --allow-exe gamescope \
-  --allow-class steam_app
-```
-
-### Config path
-
-Use `--filter-config` with either:
-- a single file path (for example `/etc/dmemcg-booster/nx-default-boost.conf`), or
-- a directory path (for example `/etc/dmemcg-booster`).
-
-When a directory is used, all regular files in that directory are loaded in lexicographic order.
-If overlapping/conflicting values are found, the daemon logs an error with file and line, and keeps the first definition.
-
-Example config:
-
-```ini
-# allow rules
-allow_exe=steam,gamescope,wine,umu
-allow_class=steam_app
-allow_title=elden ring
-
-# deny rules
-deny_class=firefox
-```
-
-To inspect the currently focused window and collect matching values for filter rules:
-
-```bash
-sleep 3 && hyprctl -j activewindow
-```
-
-Then use the reported `pid` to inspect the executable path:
-
-```bash
-readlink /proc/<PID>/exe
-```
-
-## OpenRC Service
-
-An example OpenRC service script is included as `openrc/dmemcg-booster`.
-
-Typical installation:
-
-```bash
-install -D -m 0755 openrc/dmemcg-booster /etc/init.d/dmemcg-booster
-install -m 0644 openrc/conf.d/dmemcg-booster.conf /etc/conf.d/dmemcg-booster
-mkdir -p /etc/dmemcg-booster
-# place your filter files in /etc/dmemcg-booster/
-# set DMEMCG_AGENT_UID to your desktop user's uid in /etc/conf.d/dmemcg-booster
-rc-update add dmemcg-booster default
-rc-service dmemcg-booster start
-```
 
 ## Notes
 
