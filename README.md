@@ -1,2 +1,111 @@
 # dmemcg-booster
-Fork of the dmem cgroup booster daemon, adapted to target OpenRC environments.
+
+_Fork of the dmem cgroup booster daemon, adapted to target OpenRC environments._
+
+## OpenRC Split Architecture
+
+This fork supports split roles to work on OpenRC systems:
+
+- `daemon` mode: privileged process that manages cgroups and limits.
+- `agent` mode: user-session process that tracks focused windows (Hyprland) and reports focus to the daemon.
+
+### Daemon mode (root)
+
+Run as root (typically via OpenRC):
+
+```bash
+dmemcg-booster --mode daemon --poll-only \
+  --socket-path /run/dmemcg-booster/focus.sock \
+  --socket-owner-uid 1000 \
+  --socket-mode-octal 0600
+```
+
+### Agent mode (user session)
+
+Run as the desktop user inside your graphical session:
+
+```bash
+dmemcg-booster --mode agent --focus-provider=hyprland --socket-path /run/dmemcg-booster/focus.sock
+```
+
+The agent resends the current focus sample on a heartbeat, even if focus metadata did not change, so late-spawned child processes can still be migrated.
+
+## Filter Layer (game targeting)
+
+The daemon will not boost every focused app by default unless you explicitly allow that.
+
+- Safe default: if no allow rules are configured, nothing is boosted.
+- Matching is case-insensitive substring-based.
+
+### CLI filter rules
+
+- `--allow-class <text>`
+- `--allow-exe <text>`
+- `--allow-title <text>`
+- `--allow-app <text>`
+- `--deny-class <text>`
+- `--deny-exe <text>`
+- `--deny-title <text>`
+- `--deny-app <text>`
+- `--allow-all-focused` (opt-in fallback behavior)
+
+Example:
+
+```bash
+dmemcg-booster --mode daemon --poll-only \
+  --allow-exe steam \
+  --allow-exe gamescope \
+  --allow-class steam_app
+```
+
+### Config file
+
+Use `--filter-config /etc/dmemcg-booster/games.conf`.
+
+Example config:
+
+```ini
+# allow rules
+allow_exe=steam,gamescope,wine,umu
+allow_class=steam_app
+allow_title=elden ring
+
+# deny rules
+deny_class=firefox
+```
+
+## OpenRC Service
+
+An example OpenRC service script is included as `dmemcg-booster.openrc`.
+
+Typical installation:
+
+```bash
+install -m 0755 dmemcg-booster.openrc /etc/init.d/dmemcg-booster
+mkdir -p /etc/dmemcg-booster
+# place your games.conf at /etc/dmemcg-booster/games.conf
+# set DMEMCG_AGENT_UID to your desktop user's uid in /etc/init.d/dmemcg-booster
+rc-update add dmemcg-booster default
+rc-service dmemcg-booster start
+```
+
+## Notes
+
+- On OpenRC, start `agent` from the user session (autostart, WM startup, etc.).
+- `standalone` mode also exists for single-process usage/testing.
+- Socket hardening controls:
+`--socket-mode-octal` sets socket permissions (octal).
+`--socket-owner-uid` sets socket owner uid, useful to avoid world-writable sockets.
+- Agent heartbeat control:
+`--agent-heartbeat-ms` sets the resend interval for unchanged focus samples.
+
+# Issues
+
+If you find problems with the contents of this repository, please create an issue and use the **🐞 Bug report** template.
+
+## Submitting a bug report
+
+Before submitting a bug, you should look at the [existing bug reports](https://gitlab.steamos.cloud/holo/dmemcg-booster/-/issues) to verify that no one has reported the bug already.
+
+©2026 Valve Corporation
+©2026 Nitrux Latinoamericana S.C.
