@@ -81,7 +81,7 @@ An example OpenRC service script is included as `dmemcg-booster.openrc`.
 Typical installation:
 
 ```bash
-install -m 0755 dmemcg-booster.openrc /etc/init.d/dmemcg-booster
+install -D -m 0755 dmemcg-booster.openrc /etc/init.d/dmemcg-booster
 install -m 0644 dmemcg-booster.conf /etc/conf.d/dmemcg-booster
 mkdir -p /etc/dmemcg-booster
 # place your games.conf at /etc/dmemcg-booster/games.conf

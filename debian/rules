@@ -11,3 +11,6 @@ override_dh_auto_build:
 override_dh_auto_install:
 	install -D -m 0755 target/release/dmemcg-booster \
 		$(CURDIR)/debian/nitrux-dmemcg-booster/usr/bin/dmemcg-booster
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
