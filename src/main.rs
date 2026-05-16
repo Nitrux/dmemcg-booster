@@ -3,8 +3,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::Shutdown;
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::FileTypeExt;
 use std::os::unix::fs::{chown, PermissionsExt};
-use std::os::unix::net::{UnixDatagram, UnixStream};
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -454,7 +456,7 @@ fn parse_socket_mode(value: &str) -> Option<u32> {
     let mode = value.trim_start_matches("0o").trim_start_matches('0');
     let mode = if mode.is_empty() { "0" } else { mode };
     let parsed = u32::from_str_radix(mode, 8).ok()?;
-    if parsed <= 0o777 {
+    if parsed <= 0o777 && (parsed & 0o007) == 0 {
         Some(parsed)
     } else {
         None
@@ -1009,6 +1011,21 @@ fn process_info(pid: u32) -> Option<ProcessInfo> {
     })
 }
 
+fn process_uid(pid: u32) -> Option<u32> {
+    let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    for line in status.lines() {
+        if !line.starts_with("Uid:") {
+            continue;
+        }
+
+        let mut parts = line.split_whitespace();
+        let _label = parts.next();
+        let real_uid = parts.next()?;
+        return real_uid.parse::<u32>().ok();
+    }
+    None
+}
+
 fn collect_process_tree(root_pid: u32) -> Vec<u32> {
     if !process_exists(root_pid) {
         return Vec::new();
@@ -1076,11 +1093,11 @@ fn user_slice_id(cgroup: &CGroup) -> Option<String> {
     let mut parent = parent.unwrap();
     loop {
         let name = parent.name();
-        if name.starts_with("user-")
-            && name.ends_with(".slice")
-            && let Ok(_) = u32::from_str(&name[5..name.len() - 6])
-        {
-            return Some(String::from(&name[5..name.len() - 6]));
+        if name.starts_with("user-") && name.ends_with(".slice") {
+            let user_id = &name[5..name.len() - 6];
+            if u32::from_str(user_id).is_ok() {
+                return Some(String::from(user_id));
+            }
         }
 
         if let Some(grandparent) = parent.parent() {
@@ -1120,13 +1137,12 @@ fn try_activate_dmem_controller(
     let mut retry = false;
     loop {
         if let Err(e) = cgroup.add_controller("dmem") {
-            if e.kind() == std::io::ErrorKind::NotFound
-                && !retry
-                && let Some(mut parent) = cgroup.parent()
-            {
-                propagate_dmem_activation(&mut parent, system, write_limits);
-                retry = true;
-                continue;
+            if e.kind() == std::io::ErrorKind::NotFound && !retry {
+                if let Some(mut parent) = cgroup.parent() {
+                    propagate_dmem_activation(&mut parent, system, write_limits);
+                    retry = true;
+                    continue;
+                }
             }
             return Err(e);
         } else {
@@ -1155,15 +1171,19 @@ fn propagate_dmem_activation(cgroup: &mut CGroup, system: bool, write_limits: bo
     }
 
     let should_set_limit = {
-        if let Some(parent) = cgroup.parent() && let Some(user_id) = user_slice_id(&parent) {
-            if system {
-                return;
+        if let Some(parent) = cgroup.parent() {
+            if let Some(user_id) = user_slice_id(&parent) {
+                if system {
+                    return;
+                }
+                let name = cgroup.name();
+                let mut user_service_name = String::from("user@");
+                user_service_name.push_str(user_id.as_str());
+                user_service_name.push_str(".service");
+                name == "app.slice" || name == user_service_name
+            } else {
+                true
             }
-            let name = cgroup.name();
-            let mut user_service_name = String::from("user@");
-            user_service_name.push_str(user_id.as_str());
-            user_service_name.push_str(".service");
-            name == "app.slice" || name == user_service_name
         } else {
             true
         }
@@ -1294,7 +1314,40 @@ fn process_dbus_events(state: &DbusState, system: bool, write_limits: bool) {
     }
 }
 
-fn setup_daemon_socket(path: &str, socket_mode: u32, socket_owner_uid: Option<u32>) -> Option<UnixDatagram> {
+fn remove_stale_socket(path: &PathBuf) -> bool {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return true,
+        Err(e) => {
+            eprintln!(
+                "WARNING: Could not inspect daemon socket path '{}': {e}",
+                path.display()
+            );
+            return false;
+        }
+    };
+
+    if !metadata.file_type().is_socket() {
+        eprintln!(
+            "WARNING: Refusing to remove non-socket path '{}'",
+            path.display()
+        );
+        return false;
+    }
+
+    match fs::remove_file(path) {
+        Ok(_) => true,
+        Err(e) => {
+            eprintln!(
+                "WARNING: Could not remove stale daemon socket '{}': {e}",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+fn setup_daemon_socket(path: &str, socket_mode: u32, socket_owner_uid: Option<u32>) -> Option<UnixListener> {
     let socket_path = PathBuf::from(path);
     if let Some(parent) = socket_path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
@@ -1303,9 +1356,11 @@ fn setup_daemon_socket(path: &str, socket_mode: u32, socket_owner_uid: Option<u3
         }
     }
 
-    let _ = fs::remove_file(&socket_path);
+    if !remove_stale_socket(&socket_path) {
+        return None;
+    }
 
-    let socket = match UnixDatagram::bind(&socket_path) {
+    let socket = match UnixListener::bind(&socket_path) {
         Ok(sock) => sock,
         Err(e) => {
             eprintln!("WARNING: Could not bind daemon socket '{}': {e}", socket_path.display());
@@ -1331,25 +1386,80 @@ fn setup_daemon_socket(path: &str, socket_mode: u32, socket_owner_uid: Option<u3
     Some(socket)
 }
 
-fn receive_focus_samples(socket: &UnixDatagram) -> Vec<FocusSample> {
+fn peer_uid_from_stream(stream: &UnixStream) -> Option<u32> {
+    #[cfg(target_os = "linux")]
+    {
+        let fd = stream.as_raw_fd();
+        let mut peer = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+
+        let rc = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                (&mut peer as *mut libc::ucred).cast(),
+                &mut len as *mut libc::socklen_t,
+            )
+        };
+
+        if rc == 0 && len as usize == std::mem::size_of::<libc::ucred>() {
+            Some(peer.uid)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = stream;
+        None
+    }
+}
+
+fn receive_focus_samples(socket: &UnixListener, expected_uid: Option<u32>) -> Vec<FocusSample> {
     let mut samples = Vec::new();
-    let mut buf = [0u8; 4096];
 
     loop {
-        match socket.recv(&mut buf) {
-            Ok(size) => {
-                if size == 0 {
+        match socket.accept() {
+            Ok((mut stream, _)) => {
+                if let Some(uid) = expected_uid {
+                    match peer_uid_from_stream(&stream) {
+                        Some(peer_uid) if peer_uid == uid => {}
+                        Some(peer_uid) => {
+                            eprintln!(
+                                "WARNING: Ignoring focus sample from uid {peer_uid}, expected uid {uid}"
+                            );
+                            continue;
+                        }
+                        None => {
+                            eprintln!(
+                                "WARNING: Could not verify peer uid for focus sample; ignoring connection"
+                            );
+                            continue;
+                        }
+                    }
+                }
+
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+                let mut payload = String::new();
+                if stream.read_to_string(&mut payload).is_err() {
                     continue;
                 }
 
-                let payload = String::from_utf8_lossy(&buf[..size]).to_string();
                 for line in payload.lines() {
                     if let Some(sample) = deserialize_focus_sample(line) {
                         samples.push(sample);
                     }
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                break;
+            }
             Err(e) => {
                 eprintln!("WARNING: Focus socket receive failed: {e}");
                 break;
@@ -1361,7 +1471,7 @@ fn receive_focus_samples(socket: &UnixDatagram) -> Vec<FocusSample> {
 }
 
 fn send_focus_sample(socket_path: &str, sample: &FocusSample) {
-    let socket = match UnixDatagram::unbound() {
+    let mut socket = match UnixStream::connect(socket_path) {
         Ok(sock) => sock,
         Err(e) => {
             eprintln!("WARNING: Could not create agent socket: {e}");
@@ -1369,14 +1479,22 @@ fn send_focus_sample(socket_path: &str, sample: &FocusSample) {
         }
     };
 
-    let message = serialize_focus_sample(sample);
-    if let Err(e) = socket.send_to(message.as_bytes(), socket_path) {
+    let message = format!("{}\n", serialize_focus_sample(sample));
+    if let Err(e) = socket.write_all(message.as_bytes()) {
         eprintln!("WARNING: Could not send focus sample to daemon socket '{socket_path}': {e}");
     }
+    let _ = socket.shutdown(Shutdown::Write);
 }
 
-fn select_pid_for_policy(sample: &FocusSample, filter: &GameFilter) -> Option<u32> {
+fn select_pid_for_policy(sample: &FocusSample, filter: &GameFilter, expected_uid: Option<u32>) -> Option<u32> {
     let pid = sample.pid?;
+
+    if let Some(uid) = expected_uid {
+        if process_uid(pid)? != uid {
+            return None;
+        }
+    }
+
     let process = process_info(pid)?;
     if filter.matches(sample, &process) {
         Some(pid)
@@ -1411,11 +1529,11 @@ fn run_daemon(args: &Args) {
         activate_dmem_in_descendants(&mut CGroup::root(), args.use_system_bus, write_default_limits);
 
         if let Some(socket) = &socket {
-            let samples = receive_focus_samples(socket);
+            let samples = receive_focus_samples(socket, args.socket_owner_uid);
             if !samples.is_empty() {
                 last_focus_update = Instant::now();
                 for sample in samples {
-                    let pid = select_pid_for_policy(&sample, &filter);
+                    let pid = select_pid_for_policy(&sample, &filter, args.socket_owner_uid);
                     focus_state.update_focused_pid(pid);
                 }
             }
@@ -1477,7 +1595,7 @@ fn run_standalone(args: &Args) {
         activate_dmem_in_descendants(&mut CGroup::root(), args.use_system_bus, write_default_limits);
 
         if let Some(sample) = focus_provider.poll_focus() {
-            let pid = select_pid_for_policy(&sample, &filter);
+            let pid = select_pid_for_policy(&sample, &filter, args.socket_owner_uid);
             focus_state.update_focused_pid(pid);
         }
 
