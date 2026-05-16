@@ -1,6 +1,6 @@
 # dmemcg-booster
 
-_Fork of the dmem cgroup booster daemon, adapted to target OpenRC environments._
+Fork of Valve's [dmemcg-booster daemon](https://gitlab.steamos.cloud/holo/dmemcg-booster), adapted to target OpenRC environments.
 
 ## OpenRC Split Architecture
 
