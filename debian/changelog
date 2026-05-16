@@ -1,3 +1,13 @@
+nitrux-dmemcg-booster (0.0.3)  nitrux; urgency=medium
+
+  * Load filter rules from a file or a directory path.
+  * Detect and report overlapping filter values with file:line diagnostics.
+  * Keep first filter definition when conflicts are found.
+  * Point OpenRC service default filter path to /etc/dmemcg-booster.
+  * Update README for openrc/ layout and directory-based filter configs.
+
+ -- Uri Herrera <uri_herrera@nxos.org>  Sat, 16 May 2026 13:30:00 -0500
+
 nitrux-dmemcg-booster (0.0.2)  nitrux; urgency=medium
 
   * Place service script in standard path.

@@ -58,9 +58,14 @@ dmemcg-booster --mode daemon --poll-only \
   --allow-class steam_app
 ```
 
-### Config file
+### Config path
 
-Use `--filter-config /etc/dmemcg-booster/games.conf`.
+Use `--filter-config` with either:
+- a single file path (for example `/etc/dmemcg-booster/nx-default-boost.conf`), or
+- a directory path (for example `/etc/dmemcg-booster`).
+
+When a directory is used, all regular files in that directory are loaded in lexicographic order.
+If overlapping/conflicting values are found, the daemon logs an error with file and line, and keeps the first definition.
 
 Example config:
 
@@ -76,15 +81,15 @@ deny_class=firefox
 
 ## OpenRC Service
 
-An example OpenRC service script is included as `dmemcg-booster.openrc`.
+An example OpenRC service script is included as `openrc/dmemcg-booster`.
 
 Typical installation:
 
 ```bash
-install -D -m 0755 dmemcg-booster.openrc /etc/init.d/dmemcg-booster
-install -m 0644 dmemcg-booster.conf /etc/conf.d/dmemcg-booster
+install -D -m 0755 openrc/dmemcg-booster /etc/init.d/dmemcg-booster
+install -m 0644 openrc/conf.d/dmemcg-booster.conf /etc/conf.d/dmemcg-booster
 mkdir -p /etc/dmemcg-booster
-# place your games.conf at /etc/dmemcg-booster/games.conf
+# place your filter files in /etc/dmemcg-booster/
 # set DMEMCG_AGENT_UID to your desktop user's uid in /etc/conf.d/dmemcg-booster
 rc-update add dmemcg-booster default
 rc-service dmemcg-booster start

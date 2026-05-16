@@ -75,7 +75,7 @@ impl GameFilter {
         };
 
         if let Some(path) = &args.filter_config {
-            apply_filter_file(path, &mut filter);
+            apply_filter_config(path, &mut filter);
         }
 
         filter
@@ -479,22 +479,73 @@ fn matches_any(rules: &[String], value: &str) -> bool {
     rules.iter().any(|rule| value.contains(rule))
 }
 
-fn apply_filter_file(path: &str, filter: &mut GameFilter) {
+#[derive(Clone)]
+struct FilterSource {
+    file: String,
+    line: usize,
+}
+
+fn source_label(source: &FilterSource) -> String {
+    format!("{}:{}", source.file, source.line)
+}
+
+fn push_filter_value(filter: &mut GameFilter, key: &str, value: String) {
+    match key {
+        "allow_class" => filter.allow_classes.push(value),
+        "allow_exe" => filter.allow_execs.push(value),
+        "allow_title" => filter.allow_titles.push(value),
+        "allow_app" => filter.allow_apps.push(value),
+        "deny_class" => filter.deny_classes.push(value),
+        "deny_exe" => filter.deny_execs.push(value),
+        "deny_title" => filter.deny_titles.push(value),
+        "deny_app" => filter.deny_apps.push(value),
+        _ => {}
+    }
+}
+
+fn domain_and_kind(key: &str) -> Option<(&'static str, &'static str)> {
+    match key {
+        "allow_class" => Some(("class", "allow")),
+        "allow_exe" => Some(("exe", "allow")),
+        "allow_title" => Some(("title", "allow")),
+        "allow_app" => Some(("app", "allow")),
+        "deny_class" => Some(("class", "deny")),
+        "deny_exe" => Some(("exe", "deny")),
+        "deny_title" => Some(("title", "deny")),
+        "deny_app" => Some(("app", "deny")),
+        _ => None,
+    }
+}
+
+fn apply_filter_file(
+    path: &std::path::Path,
+    filter: &mut GameFilter,
+    seen_key_value: &mut HashMap<(String, String), FilterSource>,
+    seen_domain_value: &mut HashMap<(String, String), (String, FilterSource)>,
+    allow_all_source: &mut Option<(bool, FilterSource)>,
+    had_overlap_errors: &mut bool,
+) {
+    let path_label = path.display().to_string();
     let contents = match fs::read_to_string(path) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("WARNING: Could not read filter config '{path}': {e}");
+            eprintln!("WARNING: Could not read filter config '{}': {e}", path.display());
             return;
         }
     };
 
-    for line in contents.lines() {
-        let line = line.trim();
+    for (line_index, raw_line) in contents.lines().enumerate() {
+        let line_no = line_index + 1;
+        let line = raw_line.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
         let Some((key, raw_val)) = line.split_once('=') else {
+            eprintln!(
+                "WARNING: Ignoring malformed filter rule at {}:{}",
+                path_label, line_no
+            );
             continue;
         };
 
@@ -504,9 +555,64 @@ fn apply_filter_file(path: &str, filter: &mut GameFilter) {
             continue;
         }
 
+        let source = FilterSource {
+            file: path_label.clone(),
+            line: line_no,
+        };
+
+        if key == "allow_all_focused" {
+            let parsed_bool = if val.eq_ignore_ascii_case("true") || val == "1" {
+                Some(true)
+            } else if val.eq_ignore_ascii_case("false") || val == "0" {
+                Some(false)
+            } else {
+                None
+            };
+
+            let Some(parsed_bool) = parsed_bool else {
+                eprintln!(
+                    "WARNING: Invalid boolean value for allow_all_focused at {} (expected true/false/1/0)",
+                    source_label(&source)
+                );
+                continue;
+            };
+
+            if let Some((prev_value, prev_source)) = allow_all_source.clone() {
+                if prev_value != parsed_bool {
+                    *had_overlap_errors = true;
+                    eprintln!(
+                        "ERROR: Conflicting allow_all_focused values at {} and {}",
+                        source_label(&prev_source),
+                        source_label(&source)
+                    );
+                    continue;
+                }
+                *had_overlap_errors = true;
+                eprintln!(
+                    "ERROR: Duplicate allow_all_focused value at {} (already set at {})",
+                    source_label(&source),
+                    source_label(&prev_source)
+                );
+                continue;
+            }
+
+            filter.allow_all_focused = parsed_bool;
+            *allow_all_source = Some((parsed_bool, source));
+            continue;
+        }
+
+        if domain_and_kind(key).is_none() {
+            eprintln!(
+                "WARNING: Unknown filter key '{}' at {}",
+                key,
+                source_label(&source)
+            );
+            continue;
+        }
+
         let values: Vec<String> = val
             .split(',')
-            .map(|v| normalize_value(v))
+            .map(normalize_value)
             .filter(|v| !v.is_empty())
             .collect();
 
@@ -514,20 +620,108 @@ fn apply_filter_file(path: &str, filter: &mut GameFilter) {
             continue;
         }
 
-        match key {
-            "allow_all_focused" => {
-                filter.allow_all_focused = val.eq_ignore_ascii_case("true") || val == "1";
+        let (domain, kind) = domain_and_kind(key).unwrap_or(("", ""));
+
+        for value in values {
+            let key_value = (key.to_string(), value.clone());
+            if let Some(previous_source) = seen_key_value.get(&key_value) {
+                *had_overlap_errors = true;
+                eprintln!(
+                    "ERROR: Duplicate filter value '{}' for key '{}' at {} (already set at {})",
+                    value,
+                    key,
+                    source_label(&source),
+                    source_label(previous_source)
+                );
+                continue;
             }
-            "allow_class" => filter.allow_classes.extend(values),
-            "allow_exe" => filter.allow_execs.extend(values),
-            "allow_title" => filter.allow_titles.extend(values),
-            "allow_app" => filter.allow_apps.extend(values),
-            "deny_class" => filter.deny_classes.extend(values),
-            "deny_exe" => filter.deny_execs.extend(values),
-            "deny_title" => filter.deny_titles.extend(values),
-            "deny_app" => filter.deny_apps.extend(values),
-            _ => {}
+
+            let domain_value = (domain.to_string(), value.clone());
+            if let Some((previous_kind, previous_source)) = seen_domain_value.get(&domain_value) {
+                if previous_kind != kind {
+                    *had_overlap_errors = true;
+                    eprintln!(
+                        "ERROR: Conflicting allow/deny overlap for {} '{}' at {} (already set as '{}' at {})",
+                        domain,
+                        value,
+                        source_label(&source),
+                        previous_kind,
+                        source_label(previous_source)
+                    );
+                    continue;
+                }
+            }
+
+            seen_key_value.insert(key_value, source.clone());
+            seen_domain_value.insert(domain_value, (kind.to_string(), source.clone()));
+            push_filter_value(filter, key, value);
         }
+    }
+}
+
+fn apply_filter_config(path: &str, filter: &mut GameFilter) {
+    let input_path = PathBuf::from(path);
+    let metadata = match fs::metadata(&input_path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("WARNING: Could not read filter config path '{}': {e}", input_path.display());
+            return;
+        }
+    };
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    if metadata.is_dir() {
+        let entries = match fs::read_dir(&input_path) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!(
+                    "WARNING: Could not list filter config directory '{}': {e}",
+                    input_path.display()
+                );
+                return;
+            }
+        };
+
+        for entry in entries.flatten() {
+            let candidate = entry.path();
+            if candidate.is_file() {
+                files.push(candidate);
+            }
+        }
+        files.sort_by(|a, b| a.to_string_lossy().cmp(&b.to_string_lossy()));
+    } else if metadata.is_file() {
+        files.push(input_path);
+    } else {
+        eprintln!(
+            "WARNING: Filter config path '{}' is neither a file nor a directory",
+            input_path.display()
+        );
+        return;
+    }
+
+    if files.is_empty() {
+        eprintln!("WARNING: No filter config files found");
+        return;
+    }
+
+    let mut seen_key_value: HashMap<(String, String), FilterSource> = HashMap::new();
+    let mut seen_domain_value: HashMap<(String, String), (String, FilterSource)> = HashMap::new();
+    let mut allow_all_source: Option<(bool, FilterSource)> = None;
+    let mut had_overlap_errors = false;
+
+    for file in files {
+        apply_filter_file(
+            file.as_path(),
+            filter,
+            &mut seen_key_value,
+            &mut seen_domain_value,
+            &mut allow_all_source,
+            &mut had_overlap_errors,
+        );
+    }
+
+    if had_overlap_errors {
+        eprintln!("ERROR: Overlapping filter values were detected; later conflicting entries were ignored");
     }
 }
 

@@ -5,7 +5,7 @@ command="/usr/bin/dmemcg-booster"
 supervisor=supervise-daemon
 # Set in /etc/conf.d/dmemcg-booster. Fallback defaults to 1001.
 : "${DMEMCG_AGENT_UID:=1001}"
-command_args="--mode daemon --poll-only --poll-interval-ms 1000 --socket-path /run/dmemcg-booster/focus.sock --socket-owner-uid ${DMEMCG_AGENT_UID} --socket-mode-octal 0600 --dedicated-cgroup dmemcg-booster.focused --filter-config /etc/dmemcg-booster/games.conf"
+command_args="--mode daemon --poll-only --poll-interval-ms 1000 --socket-path /run/dmemcg-booster/focus.sock --socket-owner-uid ${DMEMCG_AGENT_UID} --socket-mode-octal 0600 --dedicated-cgroup dmemcg-booster.focused --filter-config /etc/dmemcg-booster"
 
 depend() {
     need localmount
