@@ -108,5 +108,5 @@ If you find problems with the contents of this repository, please create an issu
 
 Before submitting a bug, you should look at the [existing bug reports](https://github.com/Nitrux/dmemcg-booster/issues) to verify that no one has reported the bug already.
 
-©2026 Valve Corporation
+©2026 Valve Corporation<br>
 ©2026 Nitrux Latinoamericana S.C.
