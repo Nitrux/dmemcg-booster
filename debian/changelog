@@ -1,3 +1,9 @@
+nitrux-dmemcg-booster (0.0.2)  nitrux; urgency=medium
+
+  * Place service script in standard path.
+
+ -- Uri Herrera <uri_herrera@nxos.org>  Sat, 15 May 2026 12:44:00 -0500
+
 nitrux-dmemcg-booster (0.0.1)  nitrux; urgency=medium
 
   * Create package.
