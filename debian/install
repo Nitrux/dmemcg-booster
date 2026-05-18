@@ -1,2 +1,2 @@
-openrc/dmemcg-booster etc/init.d/dmemcg-booster
-openrc/conf.d/dmemcg-booster.conf etc/conf.d/dmemcg-booster
+openrc/dmemcg-booster etc/init.d
+openrc/conf.d/dmemcg-booster.conf etc/conf.d
