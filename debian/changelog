@@ -1,3 +1,9 @@
+nitrux-dmemcg-booster (0.0.4)  nitrux; urgency=medium
+
+  * Fix dh_install paths.
+
+ -- Uri Herrera <uri_herrera@nxos.org>  Sun, 17 May 2026 18:25:00 -0500
+
 nitrux-dmemcg-booster (0.0.3)  nitrux; urgency=medium
 
   * Load filter rules from a file or a directory path.
