@@ -1,3 +1,9 @@
+nitrux-dmemcg-booster (0.0.4-1)  nitrux; urgency=medium
+
+  * Rebuild.
+
+ -- Uri Herrera <uri_herrera@nxos.org>  Thu, 15 Oct 2026 23:46:00 -0500
+
 nitrux-dmemcg-booster (0.0.4)  nitrux; urgency=medium
 
   * Fix dh_install paths.
